@@ -1,83 +1,49 @@
 import streamlit as st
-import streamlit_image_crop
-from streamlit_image_crop import image_crop
-from streamlit_image_crop import Crop
-
-streamlit_image_crop._DEBUG = True
+import threading
+from typing import Optional
+from PIL import Image as PILImage
+from av import VideoFrame
+from streamlit_webrtc import VideoProcessorBase, ClientSettings, \
+    webrtc_streamer
 
 
 def main() -> None:
-    st.title("React Image Crop")
+    class VideoProcessor(VideoProcessorBase):
+        frame_lock: threading.Lock  # `recv()` is running in another thread,
+        # then a lock object is used here for thread-safety.
+        out_image: Optional[PILImage.Image]
 
-    st.sidebar.header("Parameters")
+        def __init__(self) -> None:
+            self.frame_lock = threading.Lock()
+            self.out_image = None
 
-    fixed_aspect_ratio = st.sidebar.checkbox("Fixed aspect cropping", value=False)
+        def recv(self, frame: VideoFrame) -> VideoFrame:
+            in_image = frame.to_image()
+            out_image = in_image.transpose(PILImage.FLIP_LEFT_RIGHT)
 
-    if fixed_aspect_ratio:
-        aspect_ratio = st.sidebar.slider(
-            "Aspect ratio",
-            value=1.0,
-            min_value=0.2,
-            max_value=5.0,
-            step=0.2,
-        )
-    else:
-        aspect_ratio = None
+            with self.frame_lock:
+                self.out_image = out_image
 
-    min_width = st.sidebar.slider(
-        "Minimum width",
-        value=0,
-        min_value=0,
-        max_value=200,
-    )
-    min_height = st.sidebar.slider(
-        "Minimum height",
-        value=0,
-        min_value=0,
-        max_value=200,
+            return VideoFrame.from_image(out_image)
+
+    ctx = webrtc_streamer(
+        key="ecs171-group10",
+        client_settings=ClientSettings(
+            media_stream_constraints={"video": True, "audio": False},
+        ),
+        video_processor_factory=VideoProcessor,
     )
 
-    max_width = st.sidebar.slider(
-        "Maximum width",
-        value=1000,
-        min_value=0,
-        max_value=1000,
-    )
-    max_height = st.sidebar.slider(
-        "Maximum height",
-        value=1000,
-        min_value=0,
-        max_value=1000,
-    )
+    if ctx.video_processor:
+        if st.button("Take a picture"):
+            with ctx.video_processor.frame_lock:
+                out_image = ctx.video_processor.out_image
 
-    rule_of_thirds = st.sidebar.checkbox("Rule of Thirds", value=False)
-    circular_crop = st.sidebar.checkbox("Circular Crop", value=False)
+            if out_image is not None:
+                st.image(out_image)
 
-    f = st.file_uploader("Choose a image")
-    if f is None:
-        return
-
-    bytes_image = f.getvalue()
-
-    col_left, col_right = st.beta_columns(2)
-
-    with col_left:
-        image_cropped = image_crop(
-            bytes_image,
-            crop=Crop(aspect=aspect_ratio),
-            min_width=min_width,
-            min_height=min_height,
-            max_width=max_width,
-            max_height=max_height,
-            rule_of_thirds=rule_of_thirds,
-            circular_crop=circular_crop,
-        )
-
-    if image_cropped is None:
-        return
-
-    with col_right:
-        st.image(image_cropped)
+            else:
+                st.warning("No frames available yet.")
 
 
 main()
