@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Mac OS
+.DS_Store
+
+# Virtual Env
+.venv/
+env/
+env-ipynb/
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# vscode
+.vscode/
+
+# Datasets
+*.csv
+!df_state.csv
